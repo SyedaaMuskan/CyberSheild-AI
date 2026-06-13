@@ -46,7 +46,10 @@ class CriticAgent:
             rag_context = "\nENTERPRISE KNOWLEDGE BASE:\n" + "\n".join(rag_report["rag_context"])
 
         prompt = f"""
-You are an expert cybersecurity critic. Analyze the following reports and determine the security risk.
+You are an expert cybersecurity critic. Analyze the following RAW CODE and reports to determine the security risk.
+
+RAW CODE:
+{ast_report.get("code_snippet", "Code not provided (analyze reports)")}
 
 AST REPORT:
 {json.dumps(ast_report)}

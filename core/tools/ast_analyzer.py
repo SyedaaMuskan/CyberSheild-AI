@@ -130,7 +130,7 @@ def detect_patterns(code: str) -> List[Dict[str, Any]]:
             break
             
     # Hardcoded Secrets
-    if re.search(r'(?i)(password|secret_key|api_key|secret)\s*=\s*["\'].+?["\']', code):
+    if re.search(r'(?i)(password|pass|secret_key|api_key|secret|token)\s*=\s*["\'].+?["\']', code):
         findings.append({
             "severity": "CRITICAL",
             "category": "Secrets",
@@ -169,7 +169,8 @@ def analyze_python_ast(code: str) -> Dict[str, Any]:
         return {
             "success": True,
             "findings": all_findings,
-            "finding_count": len(all_findings)
+            "finding_count": len(all_findings),
+            "code_snippet": code
         }
 
     except SyntaxError as e:
@@ -179,7 +180,8 @@ def analyze_python_ast(code: str) -> Dict[str, Any]:
             "success": False,
             "error": f"Syntax Error: {str(e)}",
             "findings": pattern_findings,
-            "finding_count": len(pattern_findings)
+            "finding_count": len(pattern_findings),
+            "code_snippet": code
         }
 
 # Backwards-compatible API: some modules expect `analyze_ast` name
