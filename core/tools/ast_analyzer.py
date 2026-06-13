@@ -101,11 +101,11 @@ def detect_patterns(code: str) -> List[Dict[str, Any]]:
     # SQL Injection
     # Only flag if there is a SELECT accompanied by string concatenation (+)
     import re
-    if re.search(r'(?i)SELECT.*?["\']\s*\+', code):
+    if re.search(r'(?i)SELECT.*?["\']\s*\+', code) or re.search(r'(?i)f["\'].*?SELECT.*?\{.*?\}', code):
         findings.append({
             "severity": "CRITICAL",
             "category": "Injection",
-            "issue": "Possible SQL injection via string concatenation detected in query.",
+            "issue": "Possible SQL injection via string concatenation or f-string detected in query.",
             "line": -1
         })
     elif "cursor.execute(" in code and "%" in code and code.count(",") == 0:

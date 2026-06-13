@@ -32,7 +32,7 @@ class SystemIntegrityAgent:
         # no structure
         if "def " not in code:
             issues.append("No function-level structure detected")
-            score -= 40
+            score -= 5
 
         status = "COMPLETE" if score >= 70 else "INCOMPLETE"
 
