@@ -1,0 +1,13 @@
+requests==2.32.3
+python-dotenv==1.0.1
+pytest==8.2.1
+playwright
+fastapi
+uvicorn
+reportlab
+matplotlib
+networkx
+plotly
+openai
+azure-cosmos
+azure-search-documents
