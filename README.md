@@ -110,12 +110,13 @@ Visit `http://localhost:5173` to see the autonomous agent in action!
 
 ## 📸 Output Screenshots
 
-Here is what the dashboard looks like in action. 
+Here is what the dashboard looks like in action:
 
-*(Replace these placeholder images with actual screenshots of your dashboard running on localhost)*
+### Main Dashboard & Risk Analysis
+![CyberShield Cyberpunk Dashboard](docs/dashboard.png)
 
-### Target Code & Reasoned Verdict
-![CyberShield Cyberpunk Dashboard](https://via.placeholder.com/1000x600/1e1e2e/d946ef?text=CyberShield+Dashboard+Screenshot)
+### Dynamic Attack Graph Generation
+![Attack Graph](docs/attack_graph.png)
 
-### Attack Graph Flow & Auto-Heal Diff
-![Attack Graph & Patch](https://via.placeholder.com/1000x600/1e1e2e/06b6d4?text=CyberShield+Attack+Graph+Screenshot)
+### Auto-Heal Diff (Deterministic Fallback / LLM Patch)
+![Auto-Heal Patch](docs/auto_heal.png)
