@@ -1,38 +1,24 @@
 import os
 import re
 from typing import Dict, Any, Tuple, List
-from openai import AzureOpenAI
+from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 
 load_dotenv()
 
 class AdvancedAutoPatchAgent:
     """
-    Multi-step file-level auto patching system using Azure OpenAI.
+    Multi-step file-level auto patching system using Google Gemini.
     Fixes entire code files using an LLM.
     """
 
     def __init__(self):
-        # Clean the endpoint in case the user added /openai/v1 to it
-        endpoint_raw = os.getenv("AZURE_OPENAI_ENDPOINT", "")
-        if endpoint_raw.endswith("/openai/v1"):
-            self.endpoint = endpoint_raw[:-10]
-        elif endpoint_raw.endswith("/openai/v1/"):
-            self.endpoint = endpoint_raw[:-11]
-        else:
-            self.endpoint = endpoint_raw
-
-        self.api_key = os.getenv("AZURE_OPENAI_API_KEY", "")
-        self.deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT", "o4-mini")
+        self.api_key = os.getenv("GEMINI_API_KEY", "")
+        self.model_name = "gemini-2.5-flash"
         
-        if self.endpoint and self.api_key:
-            self.client = AzureOpenAI(
-                azure_endpoint=self.endpoint,
-                api_key=self.api_key,
-                api_version="2024-12-01-preview",
-                max_retries=0,
-                timeout=60.0
-            )
+        if self.api_key:
+            self.client = genai.Client(api_key=self.api_key)
         else:
             self.client = None
 
@@ -42,7 +28,7 @@ class AdvancedAutoPatchAgent:
         
         if not self.client and not deterministic_only:
             # Fallback if no keys
-            fixes.append("Warning: Azure OpenAI keys not configured. Returning original code.")
+            fixes.append("Warning: Gemini API keys not configured. Returning original code.")
             return {"patched_code": patched_code, "fix_steps": fixes}
         
         prompt = f"""
@@ -56,15 +42,15 @@ CODE TO FIX:
 """
         if not deterministic_only:
             try:
-                response = self.client.chat.completions.create(
-                    model=self.deployment_name,
-                    messages=[
-                        {"role": "system", "content": "You are a senior security patching agent."},
-                        {"role": "user", "content": prompt}
-                    ]
+                response = self.client.models.generate_content(
+                    model=self.model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        system_instruction="You are a senior security patching agent."
+                    ),
                 )
                 
-                result = response.choices[0].message.content.strip()
+                result = response.text.strip()
                 
                 # Strip markdown if the model hallucinated it
                 if result.startswith("```"):
@@ -76,12 +62,12 @@ CODE TO FIX:
                     result = "\n".join(lines).strip()
                 
                 patched_code = result
-                fixes.append(f"Dynamically patched code using Azure OpenAI model: {self.deployment_name}")
+                fixes.append(f"Dynamically patched code using Gemini model: {self.model_name}")
                 return {"patched_code": patched_code, "fix_steps": fixes}
                 
             except Exception as e:
-                print(f"\n[WARNING] Azure AI failed -> switching to deterministic engine (Error: {str(e)})")
-                fixes.append(f"[Azure LLM Unavailable] Falling back to deterministic local patching rules. (Error: {str(e)})")
+                print(f"\n[WARNING] Gemini AI failed -> switching to deterministic engine (Error: {str(e)})")
+                fixes.append(f"[Gemini LLM Unavailable] Falling back to deterministic local patching rules. (Error: {str(e)})")
         else:
             fixes.append("Circuit Breaker: Applied deterministic patches instantly.")
 
@@ -151,3 +137,4 @@ CODE TO FIX:
             "patched_code": patched_code,
             "fix_steps": fixes
         }
+

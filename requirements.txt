@@ -8,6 +8,6 @@ reportlab
 matplotlib
 networkx
 plotly
-openai
-azure-cosmos
-azure-search-documents
+google-genai
+mcp
+fastmcp

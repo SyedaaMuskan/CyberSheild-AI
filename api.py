@@ -20,6 +20,11 @@ orchestrator = SecurityOrchestrator()
 class AnalyzeRequest(BaseModel):
     code: str
 
+@app.get("/")
+def read_root():
+    return {"status": "success", "message": "🛡️ CyberShield AI Backend is Online and Ready!"}
+
+
 @app.post("/api/analyze")
 def analyze_code(req: AnalyzeRequest):
     result = orchestrator.analyze(req.code)

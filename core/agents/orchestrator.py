@@ -1,8 +1,14 @@
 from typing import Dict, Any
 import concurrent.futures
+import json
+import asyncio
+from mcp.client.stdio import stdio_client, StdioServerParameters
+from mcp.client.session import ClientSession
+import sys
+import subprocess
+import threading
 
-from core.tools.ast_analyzer import analyze_ast
-from core.tools.attack_path_generator import AttackPathGenerator
+# Core engines
 from core.tools.recommendation_engine import RecommendationEngine
 from core.tools.pdf_generator import AdvancedSecurityPDFExporter
 
@@ -18,13 +24,34 @@ from core.agents.advanced_auto_patch_agent import AdvancedAutoPatchAgent
 from core.agents.security_education_agent import SecurityEducationAgent
 from core.agents.security_pr_agent import SecurityPRAgent
 
+def run_mcp_call(tool_name, args):
+    """Synchronous wrapper to run an MCP tool call."""
+    async def _call():
+        server_params = StdioServerParameters(
+            command="python",
+            args=["core/tools/mcp_server.py"]
+        )
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                result = await session.call_tool(tool_name, arguments=args)
+                return json.loads(result.content[0].text)
+    
+    # Run asyncio loop in a new thread or use asyncio.run if safe
+    try:
+        loop = asyncio.get_running_loop()
+        # If in an event loop, we can't use asyncio.run. We have to run it in a thread.
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(1) as pool:
+            return pool.submit(asyncio.run, _call()).result()
+    except RuntimeError:
+        return asyncio.run(_call())
 
 class SecurityOrchestrator:
 
     def __init__(self):
 
         # Core engines
-        self.attack_generator = AttackPathGenerator()
         self.recommender = RecommendationEngine()
         self.pdf_exporter = AdvancedSecurityPDFExporter()
 
@@ -49,17 +76,28 @@ class SecurityOrchestrator:
 
     def analyze(self, code: str) -> Dict[str, Any]:
 
-        # 1. AST analysis
-        ast_report = analyze_ast(code)
-        
+        # 1. AST analysis via MCP
+        try:
+            ast_report = run_mcp_call("analyze_code_ast", {"code": code})
+        except Exception as e:
+            print(f"MCP Call Failed: {e}")
+            from core.tools.ast_analyzer import analyze_ast
+            ast_report = analyze_ast(code)
+            
         # --- CIRCUIT BREAKER ---
         critical_findings = [f for f in ast_report.get("findings", []) if str(f.get("severity", "")).upper() == "CRITICAL"]
         if critical_findings:
             return self._build_fast_fail_response(code, ast_report, critical_findings)
         # -----------------------
 
-        # 2. Attack paths
-        attack_report = self.attack_generator.generate_paths(ast_report, code)
+        # 2. Attack paths via MCP
+        try:
+            attack_report = run_mcp_call("generate_attack_paths", {"ast_report": ast_report, "code": code})
+        except Exception as e:
+            print(f"MCP Call Failed: {e}")
+            from core.tools.attack_path_generator import AttackPathGenerator
+            ag = AttackPathGenerator()
+            attack_report = ag.generate_paths(ast_report, code)
 
         # 3. Parallel Execution Round 1 (Independent Agents)
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
@@ -97,8 +135,11 @@ class SecurityOrchestrator:
 
             reflection_count += 1
 
-            ast_report = analyze_ast(code)
-            attack_report = self.attack_generator.generate_paths(ast_report, code)
+            try:
+                ast_report = run_mcp_call("analyze_code_ast", {"code": code})
+                attack_report = run_mcp_call("generate_attack_paths", {"ast_report": ast_report, "code": code})
+            except Exception:
+                pass # Use previous reports
 
             # Do not re-query Memory or RAG in the reflection loop as it adds huge network latency
             # We reuse the initial memory_report and rag_report
@@ -240,10 +281,16 @@ class SecurityOrchestrator:
     # -----------------------------
 
     def _build_fast_fail_response(self, code: str, ast_report: Dict[str, Any], critical_findings: list) -> Dict[str, Any]:
-        fallback_paths = self.attack_generator._fallback_generate_paths(critical_findings)
+        try:
+            from core.tools.attack_path_generator import AttackPathGenerator
+            ag = AttackPathGenerator()
+            fallback_paths = ag._fallback_generate_paths(critical_findings)
+        except Exception:
+            fallback_paths = []
+            
         attack_report = {"attack_paths": fallback_paths, "path_count": len(fallback_paths)}
         
-        patch_report = self.auto_patch_agent.fix_file(code, deterministic_only=True)
+        patch_report = self.auto_patch_agent.fix_file(code, deterministic_only=False)
         patched_code = patch_report.get("patched_code", code)
         
         memory_report = {"matched_patterns": []}

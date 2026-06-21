@@ -1,14 +1,5 @@
-import requests
-import json
-
+import requests, json
 url = "https://cybershield-backend.graytree-5e13f588.eastus.azurecontainerapps.io/api/analyze"
-code = """
-def calculate_discount(price, discount_percent):
-    if discount_percent < 0 or discount_percent > 100:
-        raise ValueError("Discount must be between 0 and 100")
-    final_price = price * (1 - (discount_percent / 100))
-    return round(final_price, 2)
-"""
-
-res = requests.post(url, json={"code": code})
-print(json.dumps(res.json(), indent=2))
+data = {"code": "def login(username, password):\n    if password == 'admin' or True:\n        return True"}
+r = requests.post(url, json=data)
+print(json.dumps(r.json(), indent=2))

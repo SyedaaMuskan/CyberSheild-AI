@@ -1,53 +1,29 @@
 import os
 from typing import Dict, Any
-from azure.core.credentials import AzureKeyCredential
-from azure.search.documents import SearchClient
-from openai import AzureOpenAI
+from google import genai
+from google.genai import types
 
 class KnowledgeRetrievalAgent:
     """
     Retrieval-Augmented Generation (RAG) agent that pulls official security
-    documentation and mitigation strategies from Azure AI Search.
+    documentation and mitigation strategies.
+    Uses a local knowledge base dictionary and falls back to Gemini.
     """
     def __init__(self):
-        self.endpoint = os.getenv("AZURE_SEARCH_ENDPOINT", "")
-        self.key = os.getenv("AZURE_SEARCH_KEY", "")
-        self.index_name = "security-knowledge-index"
-        self.client = None
-
-        if self.endpoint and self.key:
-            try:
-                self.client = SearchClient(
-                    endpoint=self.endpoint,
-                    index_name=self.index_name,
-                    credential=AzureKeyCredential(self.key),
-                    retry_total=0,
-                    connection_timeout=10
-                )
-            except Exception as e:
-                print(f"[WARNING] Azure AI Search Initialization Failed: {e}")
-
-        # Fallback Azure OpenAI LLM if search index is empty/unpopulated
-        endpoint_raw = os.getenv("AZURE_OPENAI_ENDPOINT", "")
-        if endpoint_raw.endswith("/openai/v1"):
-            self.openai_endpoint = endpoint_raw[:-10]
-        elif endpoint_raw.endswith("/openai/v1/"):
-            self.openai_endpoint = endpoint_raw[:-11]
-        else:
-            self.openai_endpoint = endpoint_raw
-
-        self.openai_key = os.getenv("AZURE_OPENAI_API_KEY", "")
-        self.deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT", "o4-mini")
+        self.api_key = os.getenv("GEMINI_API_KEY", "")
+        self.model_name = "gemini-2.5-flash"
         
-        self.openai_client = None
-        if self.openai_endpoint and self.openai_key:
-            self.openai_client = AzureOpenAI(
-                azure_endpoint=self.openai_endpoint,
-                api_key=self.openai_key,
-                api_version="2024-12-01-preview",
-                max_retries=0,
-                timeout=60.0
-            )
+        if self.api_key:
+            self.client = genai.Client(api_key=self.api_key)
+        else:
+            self.client = None
+            
+        self.local_kb = {
+            "SQL Injection": "Use parameterized queries or ORMs to separate code from data.",
+            "Cross-Site Scripting (XSS)": "Always escape user input before rendering it in the browser.",
+            "Path Traversal": "Validate file paths and restrict access to a specific directory using secure path resolution.",
+            "Code Injection": "Avoid using eval() or exec() with untrusted user input."
+        }
 
     def retrieve(self, attack_report: Dict[str, Any]) -> Dict[str, Any]:
         rag_context = []
@@ -63,29 +39,25 @@ class KnowledgeRetrievalAgent:
             if not attack_type:
                 return None
                 
-            # Try Azure AI Search first
+            # Try Local KB Search first
             retrieved = False
-            if self.client:
-                try:
-                    results = self.client.search(search_text=attack_type, top=1)
-                    for result in results:
-                        content = result.get('content') or result.get('description') or str(result)
-                        return f"[{attack_type}] Search KB: {content}"
-                except Exception:
-                    pass # Fallback to LLM
+            if attack_type in self.local_kb:
+                content = self.local_kb[attack_type]
+                return f"[{attack_type}] Search KB: {content}"
             
             # Fallback to LLM
-            if not retrieved and self.openai_client:
+            if not retrieved and self.client:
                 try:
-                    response = self.openai_client.chat.completions.create(
-                        model=self.deployment_name,
-                        messages=[
-                            {"role": "system", "content": "You are a highly advanced enterprise security knowledge base. Provide a concise, 1-2 sentence official security context and standard mitigation strategy for the given attack type."},
-                            {"role": "user", "content": f"Attack Type: {attack_type}"}
-                        ]
+                    prompt = f"Attack Type: {attack_type}"
+                    response = self.client.models.generate_content(
+                        model=self.model_name,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            system_instruction="You are a highly advanced enterprise security knowledge base. Provide a concise, 1-2 sentence official security context and standard mitigation strategy for the given attack type."
+                        ),
                     )
-                    content = response.choices[0].message.content.strip()
-                    return f"[{attack_type}] Enterprise KB: {content}"
+                    content = response.text.strip()
+                    return f"[{attack_type}] Enterprise KB (Gemini): {content}"
                 except Exception:
                     pass
             return None
@@ -97,3 +69,4 @@ class KnowledgeRetrievalAgent:
                     rag_context.append(res)
 
         return {"rag_context": rag_context}
+

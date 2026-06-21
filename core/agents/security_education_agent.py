@@ -1,31 +1,18 @@
 import os
-from openai import AzureOpenAI
+from google import genai
+from google.genai import types
 
 class SecurityEducationAgent:
     """
-    Explains WHY a fix is safer in simple human terms using Azure OpenAI.
+    Explains WHY a fix is safer in simple human terms using Google Gemini.
     """
 
     def __init__(self):
-        endpoint_raw = os.getenv("AZURE_OPENAI_ENDPOINT", "")
-        if endpoint_raw.endswith("/openai/v1"):
-            self.endpoint = endpoint_raw[:-10]
-        elif endpoint_raw.endswith("/openai/v1/"):
-            self.endpoint = endpoint_raw[:-11]
-        else:
-            self.endpoint = endpoint_raw
-
-        self.api_key = os.getenv("AZURE_OPENAI_API_KEY", "")
-        self.deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT", "o4-mini")
+        self.api_key = os.getenv("GEMINI_API_KEY", "")
+        self.model_name = "gemini-2.5-flash"
         
-        if self.endpoint and self.api_key:
-            self.client = AzureOpenAI(
-                azure_endpoint=self.endpoint,
-                api_key=self.api_key,
-                api_version="2024-12-01-preview",
-                max_retries=0,
-                timeout=60.0
-            )
+        if self.api_key:
+            self.client = genai.Client(api_key=self.api_key)
         else:
             self.client = None
 
@@ -33,14 +20,14 @@ class SecurityEducationAgent:
         if self.client and patched_code and original_code and patched_code != original_code:
             try:
                 prompt = f"Original Code:\n{original_code}\n\nPatched Code:\n{patched_code}"
-                response = self.client.chat.completions.create(
-                    model=self.deployment_name,
-                    messages=[
-                        {"role": "system", "content": "You are a security educator. Explain concisely in 1-2 bullet points why the new code is safer than the original code. Output just the raw text explanations without markdown formatting."},
-                        {"role": "user", "content": prompt}
-                    ]
+                response = self.client.models.generate_content(
+                    model=self.model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        system_instruction="You are a security educator. Explain concisely in 1-2 bullet points why the new code is safer than the original code. Output just the raw text explanations without markdown formatting."
+                    ),
                 )
-                content = response.choices[0].message.content.strip()
+                content = response.text.strip()
                 # Split lines and strip bullets
                 explanations = [line.lstrip("•- *").strip() for line in content.split("\n") if line.strip()]
                 return {"education_mode": True, "explanations": explanations}

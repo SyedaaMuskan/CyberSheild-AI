@@ -1,36 +1,23 @@
 import os
 import json
 from typing import List, Dict, Any
-from openai import AzureOpenAI
+from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 
 load_dotenv()
 
 class AttackPathGenerator:
     """
-    Converts AST findings into meaningful attack scenarios using Azure OpenAI.
+    Converts AST findings into meaningful attack scenarios using Google Gemini.
     This is the reasoning layer above static detection.
     """
     def __init__(self):
-        endpoint_raw = os.getenv("AZURE_OPENAI_ENDPOINT", "")
-        if endpoint_raw.endswith("/openai/v1"):
-            self.endpoint = endpoint_raw[:-10]
-        elif endpoint_raw.endswith("/openai/v1/"):
-            self.endpoint = endpoint_raw[:-11]
-        else:
-            self.endpoint = endpoint_raw
+        self.api_key = os.getenv("GEMINI_API_KEY", "")
+        self.model_name = "gemini-2.5-flash"
 
-        self.api_key = os.getenv("AZURE_OPENAI_API_KEY", "")
-        self.deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT", "o4-mini")
-
-        if self.endpoint and self.api_key:
-            self.client = AzureOpenAI(
-                azure_endpoint=self.endpoint,
-                api_key=self.api_key,
-                api_version="2024-12-01-preview",
-                max_retries=0,
-                timeout=60.0
-            )
+        if self.api_key:
+            self.client = genai.Client(api_key=self.api_key)
         else:
             self.client = None
 
@@ -79,15 +66,15 @@ Output exactly valid JSON in this structure:
 Do NOT output markdown code blocks. Output ONLY JSON.
 """
         try:
-            response = self.client.chat.completions.create(
-                model=self.deployment_name,
-                messages=[
-                    {"role": "system", "content": "You are a strict JSON-only API. You build attack chains."},
-                    {"role": "user", "content": prompt}
-                ]
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction="You are a strict JSON-only API. You build attack chains."
+                ),
             )
             
-            result_text = response.choices[0].message.content.strip()
+            result_text = response.text.strip()
             
             if result_text.startswith("```json"):
                 result_text = result_text[7:]
@@ -117,6 +104,7 @@ Do NOT output markdown code blocks. Output ONLY JSON.
             "attack_paths": paths,
             "path_count": len(paths)
         }
+
 
     def _fallback_generate_paths(self, findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         paths = []
